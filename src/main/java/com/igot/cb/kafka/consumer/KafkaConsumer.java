@@ -48,10 +48,10 @@ public class KafkaConsumer {
 
     public void processRequest(String searchId) {
         try {
-            Object readResponse=esUtilService.readDocument(Constants.TRENDING_SEARCHES_INDEX_NAME, searchId);
+            Object readResponse = esUtilService.readDocument(Constants.TRENDING_SEARCHES_INDEX_NAME, searchId);
             if (readResponse == null) {
                 log.error("No record found for searchId: " + searchId);
-            }else{
+            } else {
                 Map<String, Object> searchQuery = (Map<String, Object>) readResponse;
                 Object lastSearchedObj = searchQuery.get(Constants.LAST_SEARCHED);
                 if (lastSearchedObj instanceof String lastSearchedStr) {
@@ -63,19 +63,19 @@ public class KafkaConsumer {
                         searchQuery.remove(Constants.LAST_SEARCHED);  // Or handle differently
                     }
                 }
-                Object response=cassandraOperation.insertRecord(
+                Object response = cassandraOperation.insertRecord(
                         Constants.KEYSPACE_SUNBIRD_COURSES,
                         Constants.TABLE_TRENDING_SEARCH,
                         searchQuery);
                 if (response == null) {
                     log.error("Failed to insert record into Cassandra for searchId: {}", searchId);
-                }else {
+                } else {
                     log.info("Inserted record into Cassandra for searchId: {}", searchId);
                 }
             }
         } catch (IOException e) {
-            log.error("Error while updating in cassandra for searchId: {} {}",searchId, e.getMessage());
-            throw new CustomException(Constants.ERROR,e.getMessage(),HttpStatus.INTERNAL_SERVER_ERROR);
+            log.error("Error while updating in cassandra for searchId: {} {}", searchId, e.getMessage());
+            throw new CustomException(Constants.ERROR, e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
     }

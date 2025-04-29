@@ -55,7 +55,7 @@ public class EsUtilServiceImpl implements EsUtilService {
     public EsUtilServiceImpl(ElasticsearchClient elasticsearchClient,
                              EsConfig esConnection,
                              ObjectMapper objectMapper,
-                             CbServerProperties cbServerProperties,RestClient restClient) {
+                             CbServerProperties cbServerProperties, RestClient restClient) {
         this.elasticsearchClient = elasticsearchClient;
         this.esConfig = esConnection;
         this.objectMapper = objectMapper;
@@ -63,7 +63,7 @@ public class EsUtilServiceImpl implements EsUtilService {
         this.NON_TEXT_FIELDS = Arrays.stream(cbServerProperties.getNonTextFields().split(","))
                 .map(String::trim)
                 .collect(Collectors.toSet());
-        this.restClient=restClient;
+        this.restClient = restClient;
     }
 
 
@@ -82,21 +82,21 @@ public class EsUtilServiceImpl implements EsUtilService {
             document.put("last_searched", esFormattedDate);
             document.putIfAbsent("search_count", 1);
             String scriptSource = """
-            {
-              "script": {
-                "source": "if (ctx._source.search_count == null) { ctx._source.search_count = 1; } else { ctx._source.search_count += 1; } ctx._source.last_searched = params.date;",
-                "params": { "date": "%s" }
-              },
-              "upsert": %s
-            }
-            """.formatted(esFormattedDate, objectMapper.writeValueAsString(document));
+                    {
+                      "script": {
+                        "source": "if (ctx._source.search_count == null) { ctx._source.search_count = 1; } else { ctx._source.search_count += 1; } ctx._source.last_searched = params.date;",
+                        "params": { "date": "%s" }
+                      },
+                      "upsert": %s
+                    }
+                    """.formatted(esFormattedDate, objectMapper.writeValueAsString(document));
 
             Request request = new Request("POST", "/" + esIndexName + "/_doc/" + id + "/_update?refresh=true");
             request.setJsonEntity(scriptSource);
             Response esResponse = restClient.performRequest(request);
-            if(esResponse.getStatusLine().getReasonPhrase().equalsIgnoreCase("OK")){
+            if (esResponse.getStatusLine().getReasonPhrase().equalsIgnoreCase("OK")) {
                 response.getParams().setStatus(Constants.SUCCESS);
-            }else{
+            } else {
                 response.getParams().setErrMsg("Failed to update Elasticsearch document");
                 response.getParams().setStatus(Constants.FAILED);
             }
@@ -214,9 +214,9 @@ public class EsUtilServiceImpl implements EsUtilService {
                         String actualField = NON_TEXT_FIELDS.contains(field) ? field + Constants.KEYWORD : field;
 
                         if (field.equals("must_not") && value instanceof ArrayList) {
-                            mustNotQueries.add(Query.of(q ->q.termsSet(t->t.field(actualField).terms((ArrayList<String>) value))));
+                            mustNotQueries.add(Query.of(q -> q.termsSet(t -> t.field(actualField).terms((ArrayList<String>) value))));
                         } else if (value instanceof Boolean) {
-                            boolQueries.add(Query.of(q ->q.term(t->t.field(actualField).value((boolean)value))));
+                            boolQueries.add(Query.of(q -> q.term(t -> t.field(actualField).value((boolean) value))));
                         } else if (value instanceof ArrayList) {
                             List<FieldValue> termsList = ((ArrayList<String>) value).stream()
                                     .map(FieldValue::of)
@@ -241,13 +241,13 @@ public class EsUtilServiceImpl implements EsUtilService {
                                             rangeQuery.gte(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_LESS_THAN_EQUALS:
-                                            rangeQuery.lte(JsonData.of(rangeValue) );
+                                            rangeQuery.lte(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_GREATER_THAN:
-                                            rangeQuery.gt(JsonData.of(rangeValue) );
+                                            rangeQuery.gt(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_LESS_THAN:
-                                            rangeQuery.lt(JsonData.of(rangeValue) );
+                                            rangeQuery.lt(JsonData.of(rangeValue));
                                             break;
                                     }
                                 });
@@ -281,7 +281,7 @@ public class EsUtilServiceImpl implements EsUtilService {
     private void addSortToSearchSourceBuilder(
             SearchCriteria searchCriteria, SearchRequest.Builder searchRequestBuilder) {
         if (isNotBlank(searchCriteria.getOrderBy()) && isNotBlank(searchCriteria.getOrderDirection())) {
-            if(searchCriteria.getOrderBy().equalsIgnoreCase("search_count")){
+            if (searchCriteria.getOrderBy().equalsIgnoreCase("search_count")) {
                 SortOrder sortOrder =
                         Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.Asc : SortOrder.Desc;
                 searchRequestBuilder.sort(SortOptions.of(so -> so
@@ -290,7 +290,7 @@ public class EsUtilServiceImpl implements EsUtilService {
                                 .order(sortOrder)
                         )
                 ));
-            }else {
+            } else {
                 SortOrder sortOrder =
                         Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.Asc : SortOrder.Desc;
                 searchRequestBuilder.sort(SortOptions.of(so -> so
@@ -378,7 +378,7 @@ public class EsUtilServiceImpl implements EsUtilService {
         return searchResponse.hits();
     }
 
-    private BulkResponse deleteMatchingDocuments(String esIndexName,  HitsMetadata<Object> searchHits)
+    private BulkResponse deleteMatchingDocuments(String esIndexName, HitsMetadata<Object> searchHits)
             throws IOException {
         List<BulkOperation> operations = new ArrayList<>();
         for (Hit<Object> hit : searchHits.hits()) {
@@ -540,7 +540,7 @@ public class EsUtilServiceImpl implements EsUtilService {
         } catch (Exception e) {
             log.error(e.getMessage());
             throw new CustomException("error bulk uploading", e.getMessage(),
-                HttpStatus.INTERNAL_SERVER_ERROR);
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

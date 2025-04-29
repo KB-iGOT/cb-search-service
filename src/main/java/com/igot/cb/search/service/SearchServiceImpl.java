@@ -74,7 +74,7 @@ public class SearchServiceImpl implements SearchService {
         JsonNode categoryNode = searchQuery.get(Constants.SEARCH_CATEGORY);
         Set<String> categorySet = new HashSet<>();
         if (!isDuplicate) {
-            if(isValidCategory(categoryNode)){
+            if (isValidCategory(categoryNode)) {
                 categorySet.add(categoryNode.asText());
             }
             Map<String, Object> userSearchQuery = new HashMap<>();
@@ -198,14 +198,21 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public ApiResponse createUserTrendingSearches(JsonNode searchQuery) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_TRENDING_SEARCH_CREATE);
-        String query = searchQuery.get(Constants.SEARCH_QUERY).asText();
+        JsonNode queryNode = searchQuery.get(Constants.SEARCH_QUERY);
+        if (queryNode == null || queryNode.isNull() || queryNode.asText().trim().isEmpty()) {
+            response.getParams().setErrMsg("Search query cannot be null or empty");
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        String query = queryNode.asText();
         String id = query.trim().toLowerCase().replaceAll("\\s+", "_");
         Map<String, Object> trendingSearch = new HashMap<>();
         trendingSearch.put(Constants.QUERY_ID, id);
         trendingSearch.put("query", searchQuery.get(Constants.SEARCH_QUERY).asText());
         response = esUtilService.upsertTrendingSearch(Constants.TRENDING_SEARCHES_INDEX_NAME, id, trendingSearch, cbServerProperties.getElasticSearchJsonPath());
         if (response.getParams().getStatus().equalsIgnoreCase(Constants.SUCCESS)) {
-            kafkaProducer.push(cbServerProperties.getUserRecentSearchTopic(),id);
+            kafkaProducer.push(cbServerProperties.getUserRecentSearchTopic(), id);
         }
         return response;
     }
