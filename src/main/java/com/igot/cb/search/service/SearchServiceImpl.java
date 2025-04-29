@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.kafka.producer.KafkaProducer;
 import com.igot.cb.util.ApiResponse;
 import com.igot.cb.util.CbServerProperties;
 import com.igot.cb.util.Constants;
@@ -18,9 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class SearchServiceImpl implements SearchService {
@@ -39,6 +38,9 @@ public class SearchServiceImpl implements SearchService {
 
     @Autowired
     private CbServerProperties cbServerProperties;
+
+    @Autowired
+    private KafkaProducer kafkaProducer;
 
     @Override
     public ApiResponse createUserRecentSearches(JsonNode searchQuery, String token) {
@@ -69,17 +71,23 @@ public class SearchServiceImpl implements SearchService {
         String newSearchQuery = searchQuery.get(Constants.SEARCH_QUERY).asText();
         boolean isDuplicate = existingSearches.stream()
                 .anyMatch(record -> newSearchQuery.equalsIgnoreCase((String) record.get("search_query")));
+        JsonNode categoryNode = searchQuery.get(Constants.SEARCH_CATEGORY);
+        Set<String> categorySet = new HashSet<>();
         if (!isDuplicate) {
+            if(isValidCategory(categoryNode)){
+                categorySet.add(categoryNode.asText());
+            }
             Map<String, Object> userSearchQuery = new HashMap<>();
             userSearchQuery.put(Constants.USERID, userId);
-            userSearchQuery.put(Constants.UNIQUE_ID, System.currentTimeMillis());
+            userSearchQuery.put(Constants.UNIQUE_ID, System.currentTimeMillis()); // Generate new unique_id
             userSearchQuery.put(Constants.SEARCH_QUERY_KEY, searchQuery.get(Constants.SEARCH_QUERY).asText());
+            userSearchQuery.put(Constants.SEARCH_CATEGORY, categorySet);
+
             ApiResponse insertResponse = (ApiResponse) cassandraOperation.insertRecord(
                     Constants.KEYSPACE_SUNBIRD_COURSES,
                     Constants.TABLE_USER_RECENT_SEARCH,
                     userSearchQuery
             );
-
             if (Constants.SUCCESS.equals(insertResponse.get(Constants.RESPONSE))) {
                 response.getParams().setErrMsg("search request saved successfully");
                 response.getParams().setStatus(Constants.SUCCESS);
@@ -91,11 +99,47 @@ public class SearchServiceImpl implements SearchService {
                 return response;
             }
         } else {
+            if (isValidCategory(categoryNode)) {
+                Map<String, Object> existingRecord = existingSearches.stream()
+                        .filter(record -> newSearchQuery.equalsIgnoreCase((String) record.get("search_query")))
+                        .findFirst().orElse(null);
+                if (existingRecord != null) {
+                    Map<String, Object> compositeMap = new HashMap<>();
+                    compositeMap.put(Constants.USERID, userId);
+                    compositeMap.put(Constants.UNIQUE_ID, existingRecord.get(Constants.UNIQUE_ID));
+                    Map<String, Object> updateFields = new HashMap<>();
+                    categorySet.add(categoryNode.asText());
+                    categorySet.addAll((Set<String>) existingRecord.get(Constants.SEARCH_CATEGORY));
+                    updateFields.put(Constants.SEARCH_CATEGORY, categorySet);
+                    Map<String, Object> updateResponse = cassandraOperation.updateRecord(
+                            Constants.KEYSPACE_SUNBIRD_COURSES,
+                            Constants.TABLE_USER_RECENT_SEARCH,
+                            updateFields,
+                            compositeMap
+
+                    );
+
+                    if (Constants.SUCCESS.equals(updateResponse.get(Constants.RESPONSE))) {
+                        response.getParams().setErrMsg("search request updated successfully");
+                        response.getParams().setStatus(Constants.SUCCESS);
+                        response.setResponseCode(HttpStatus.OK);
+                        return response;
+                    } else {
+                        response.getParams().setErrMsg("Failed to update search query.");
+                        response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                        return response;
+                    }
+                }
+            }
             response.getParams().setErrMsg("search request saved successfully");
             response.getParams().setStatus(Constants.SUCCESS);
             response.setResponseCode(HttpStatus.OK);
             return response;
         }
+    }
+
+    private boolean isValidCategory(JsonNode node) {
+        return node != null && !node.isNull() && !node.asText().trim().isEmpty();
     }
 
     @Override
@@ -155,34 +199,13 @@ public class SearchServiceImpl implements SearchService {
     public ApiResponse createUserTrendingSearches(JsonNode searchQuery) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_TRENDING_SEARCH_CREATE);
         String query = searchQuery.get(Constants.SEARCH_QUERY).asText();
-        String id = query.trim().toLowerCase().replaceAll("\\s+", " ");
-        Map<String, Object> propertyMap = new HashMap<>();
-        propertyMap.put(Constants.QUERY_ID, id);
-
-        List<Map<String, Object>> trendingRecord = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                Constants.KEYSPACE_SUNBIRD_COURSES,
-                Constants.TABLE_TRENDING_SEARCH, propertyMap, null, null);
-        if (trendingRecord.isEmpty()) {
-            Map<String, Object> trendingSearch = new HashMap<>();
-            trendingSearch.put(Constants.QUERY_ID, id);
-            trendingSearch.put("query", searchQuery.get(Constants.SEARCH_QUERY).asText());
-            trendingSearch.put(Constants.SEARCH_COUNT, 1);
-            trendingSearch.put(Constants.LAST_SEARCHED, Instant.now());
-            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSES,
-                    Constants.TABLE_TRENDING_SEARCH, trendingSearch);
-            trendingSearch.put(Constants.LAST_SEARCHED, Instant.now().toString());
-            esUtilService.addDocument(Constants.TRENDING_SEARCHES_INDEX_NAME, Constants.INDEX_TYPE, id, trendingSearch, cbServerProperties.getElasticSearchJsonPath());
-        } else {
-            for (Map<String, Object> record : trendingRecord) {
-                int searchCount = (int) record.get(Constants.SEARCH_COUNT);
-                searchCount++;
-                record.put(Constants.SEARCH_COUNT, searchCount);
-                record.put(Constants.LAST_SEARCHED, Instant.now());
-                cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSES,
-                        Constants.TABLE_TRENDING_SEARCH, record);
-                record.put(Constants.LAST_SEARCHED, Instant.now().toString());
-                esUtilService.addDocument(Constants.TRENDING_SEARCHES_INDEX_NAME, Constants.INDEX_TYPE, id, record, cbServerProperties.getElasticSearchJsonPath());
-            }
+        String id = query.trim().toLowerCase().replaceAll("\\s+", "_");
+        Map<String, Object> trendingSearch = new HashMap<>();
+        trendingSearch.put(Constants.QUERY_ID, id);
+        trendingSearch.put("query", searchQuery.get(Constants.SEARCH_QUERY).asText());
+        response = esUtilService.upsertTrendingSearch(Constants.TRENDING_SEARCHES_INDEX_NAME, id, trendingSearch, cbServerProperties.getElasticSearchJsonPath());
+        if (response.getParams().getStatus().equalsIgnoreCase(Constants.SUCCESS)) {
+            kafkaProducer.push(cbServerProperties.getUserRecentSearchTopic(),id);
         }
         return response;
     }

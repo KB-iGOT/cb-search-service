@@ -78,6 +78,7 @@ public class Constants {
     public static final String USERID = "user_id";
     public static final String SEARCH_QUERY_KEY = "search_query";
     public static final String UNIQUE_ID = "unique_id";
+    public static final String SEARCH_CATEGORY = "search_category";
 
 
     private Constants() {

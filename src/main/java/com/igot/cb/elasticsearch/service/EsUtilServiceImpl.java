@@ -2,7 +2,6 @@ package com.igot.cb.elasticsearch.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
-import co.elastic.clients.elasticsearch._types.Refresh;
 import co.elastic.clients.elasticsearch._types.SortOptions;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.aggregations.*;
@@ -14,11 +13,10 @@ import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import co.elastic.clients.elasticsearch.core.search.SourceConfig;
 import co.elastic.clients.elasticsearch.indices.GetIndexRequest;
 import co.elastic.clients.elasticsearch.indices.GetIndexResponse;
-import co.elastic.clients.elasticsearch.indices.RefreshRequest;
 import co.elastic.clients.json.JsonData;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.util.ApiResponse;
 import com.igot.cb.util.CbServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.elasticsearch.config.EsConfig;
@@ -26,14 +24,19 @@ import com.igot.cb.elasticsearch.dto.FacetDTO;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
 import com.igot.cb.exceptions.CustomException;
-import com.networknt.schema.JsonSchemaFactory;
+import com.igot.cb.util.ProjectUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.client.Request;
+import org.elasticsearch.client.Response;
+import org.elasticsearch.client.RestClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
@@ -46,12 +49,13 @@ public class EsUtilServiceImpl implements EsUtilService {
     private final ElasticsearchClient elasticsearchClient;
     private final ObjectMapper objectMapper;
     private final Set<String> NON_TEXT_FIELDS;
+    private final RestClient restClient;
 
     @Autowired
     public EsUtilServiceImpl(ElasticsearchClient elasticsearchClient,
                              EsConfig esConnection,
                              ObjectMapper objectMapper,
-                             CbServerProperties cbServerProperties) {
+                             CbServerProperties cbServerProperties,RestClient restClient) {
         this.elasticsearchClient = elasticsearchClient;
         this.esConfig = esConnection;
         this.objectMapper = objectMapper;
@@ -59,58 +63,52 @@ public class EsUtilServiceImpl implements EsUtilService {
         this.NON_TEXT_FIELDS = Arrays.stream(cbServerProperties.getNonTextFields().split(","))
                 .map(String::trim)
                 .collect(Collectors.toSet());
+        this.restClient=restClient;
     }
+
+
 
 
     @Override
-    public String addDocument(
-            String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath) {
-        log.info("EsUtilServiceImpl :: addDocument");
+    public ApiResponse upsertTrendingSearch(
+            String esIndexName, String id, Map<String, Object> document, String jsonFilePath) {
+        log.info("EsUtilServiceImpl :: upsertTrendingSearch");
+        ApiResponse response = ProjectUtil.createDefaultResponse("upsertTrendingSearch");
         try {
-            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
-            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath);
-            Map<String, Object> map = objectMapper.readValue(schemaStream,
-                    new TypeReference<Map<String, Object>>() {
-                    });
-            Iterator<Entry<String, Object>> iterator = document.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Entry<String, Object> entry = iterator.next();
-                String key = entry.getKey();
-                if (!map.containsKey(key)) {
-                    iterator.remove();
-                }
+            String dateString = document.getOrDefault("last_searched", Instant.now().toString()).toString();
+            Instant instant = Instant.parse(dateString);
+            String esFormattedDate = instant.atZone(ZoneId.of("Asia/Kolkata"))
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"));
+            document.put("last_searched", esFormattedDate);
+            document.putIfAbsent("search_count", 1);
+            String scriptSource = """
+            {
+              "script": {
+                "source": "if (ctx._source.search_count == null) { ctx._source.search_count = 1; } else { ctx._source.search_count += 1; } ctx._source.last_searched = params.date;",
+                "params": { "date": "%s" }
+              },
+              "upsert": %s
             }
-            IndexRequest<Map<String,Object>> indexRequest = new IndexRequest.Builder<Map<String, Object>>()
-                    .index(esIndexName)
-                    .id(id)
-                    .document(document)
-                    .refresh(Refresh.True)
-                    .build();
-            IndexResponse response = elasticsearchClient.index(indexRequest);
-            return "Successfully indexed document with id: " + response.result();
+            """.formatted(esFormattedDate, objectMapper.writeValueAsString(document));
+
+            Request request = new Request("POST", "/" + esIndexName + "/_doc/" + id + "/_update?refresh=true");
+            request.setJsonEntity(scriptSource);
+            Response esResponse = restClient.performRequest(request);
+            if(esResponse.getStatusLine().getReasonPhrase().equalsIgnoreCase("OK")){
+                response.getParams().setStatus(Constants.SUCCESS);
+            }else{
+                response.getParams().setErrMsg("Failed to update Elasticsearch document");
+                response.getParams().setStatus(Constants.FAILED);
+            }
+            return response;
         } catch (Exception e) {
-            log.error("Issue while Indexing to es: {}", e.getMessage());
-            return null;
+            log.error("Error updating Elasticsearch document", e);
+            response.getParams().setErrMsg(e.getMessage());
+            response.getParams().setStatus(Constants.FAILED);
+            return response;
         }
     }
 
-    @Override
-    public void deleteDocument(String documentId, String esIndexName) {
-        try {
-            DeleteRequest request = new DeleteRequest.Builder().index(esIndexName).id(documentId).build();
-            DeleteResponse response = elasticsearchClient.delete(request);
-            if (response.result().jsonValue().equalsIgnoreCase("DELETED")) {
-                log.info("Document deleted successfully from elasticsearch.");
-                RefreshRequest refreshRequest = new RefreshRequest.Builder().index(esIndexName).build();
-                elasticsearchClient.indices().refresh(refreshRequest);
-                log.info("Index refreshed to reflect the document deletion.");
-            } else {
-                log.error("Document not found or failed to delete from elasticsearch.");
-            }
-        } catch (Exception e) {
-            log.error("Error occurred during deleting document in elasticsearch");
-        }
-    }
 
     @Override
     public SearchResult searchDocuments(String esIndexName, SearchCriteria searchCriteria) {
@@ -544,6 +542,16 @@ public class EsUtilServiceImpl implements EsUtilService {
             throw new CustomException("error bulk uploading", e.getMessage(),
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    @Override
+    public Object readDocument(String esIndexName, String documentId) throws IOException {
+        GetRequest getRequest = GetRequest.of(g -> g.index(esIndexName).id(documentId));
+        GetResponse<Object> response = elasticsearchClient.get(getRequest, Object.class);
+        if (!response.found()) {
+            return "Document not found in Elasticsearch.";
+        }
+        return response.source();
     }
 
 
