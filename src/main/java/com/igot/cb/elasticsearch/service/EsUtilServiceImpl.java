@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class EsUtilServiceImpl implements EsUtilService {
 
-    private final EsConfig esConfig;
+
     private final ElasticsearchClient elasticsearchClient;
     private final ObjectMapper objectMapper;
     private final Set<String> NON_TEXT_FIELDS;
@@ -57,7 +57,6 @@ public class EsUtilServiceImpl implements EsUtilService {
                              ObjectMapper objectMapper,
                              CbServerProperties cbServerProperties, RestClient restClient) {
         this.elasticsearchClient = elasticsearchClient;
-        this.esConfig = esConnection;
         this.objectMapper = objectMapper;
 
         this.NON_TEXT_FIELDS = Arrays.stream(cbServerProperties.getNonTextFields().split(","))
@@ -94,17 +93,20 @@ public class EsUtilServiceImpl implements EsUtilService {
             Request request = new Request("POST", "/" + esIndexName + "/_doc/" + id + "/_update?refresh=true");
             request.setJsonEntity(scriptSource);
             Response esResponse = restClient.performRequest(request);
-            if (esResponse.getStatusLine().getReasonPhrase().equalsIgnoreCase("OK")) {
+            String status = esResponse.getStatusLine().getReasonPhrase();
+            if ("OK".equalsIgnoreCase(status)||"Created".equalsIgnoreCase(status)) {
                 response.getParams().setStatus(Constants.SUCCESS);
             } else {
                 response.getParams().setErrMsg("Failed to update Elasticsearch document");
                 response.getParams().setStatus(Constants.FAILED);
+                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             }
             return response;
         } catch (Exception e) {
             log.error("Error updating Elasticsearch document", e);
             response.getParams().setErrMsg(e.getMessage());
             response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             return response;
         }
     }

@@ -17,7 +17,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 
@@ -197,22 +198,18 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public ApiResponse createUserTrendingSearches(JsonNode searchQuery) {
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_TRENDING_SEARCH_CREATE);
-        JsonNode queryNode = searchQuery.get(Constants.SEARCH_QUERY);
-        if (queryNode == null || queryNode.isNull() || queryNode.asText().trim().isEmpty()) {
-            response.getParams().setErrMsg("Search query cannot be null or empty");
-            response.getParams().setStatus(Constants.FAILED);
-            response.setResponseCode(HttpStatus.BAD_REQUEST);
-            return response;
-        }
+        JsonNode queryNode = searchQuery.get(Constants.PROCESSED_QUERY);
         String query = queryNode.asText();
-        String id = query.trim().toLowerCase().replaceAll("\\s+", "_");
+        String id = query.trim().toLowerCase().replaceAll("\\s+", " ");
+        String encodedId = URLEncoder.encode(id, StandardCharsets.UTF_8);
         Map<String, Object> trendingSearch = new HashMap<>();
-        trendingSearch.put(Constants.QUERY_ID, id);
-        trendingSearch.put("query", searchQuery.get(Constants.SEARCH_QUERY).asText());
-        response = esUtilService.upsertTrendingSearch(Constants.TRENDING_SEARCHES_INDEX_NAME, id, trendingSearch, cbServerProperties.getElasticSearchJsonPath());
+        trendingSearch.put(Constants.PROCESSED_QUERY, searchQuery.get(Constants.PROCESSED_QUERY).asText());
+        ApiResponse response = esUtilService.upsertTrendingSearch(Constants.TRENDING_SEARCHES_INDEX_NAME, encodedId, trendingSearch, cbServerProperties.getElasticSearchJsonPath());
         if (response.getParams().getStatus().equalsIgnoreCase(Constants.SUCCESS)) {
-            kafkaProducer.push(cbServerProperties.getUserRecentSearchTopic(), id);
+            Map<String, String> kafkaPayload = new HashMap<>();
+            kafkaPayload.put(Constants.ID, id);
+            kafkaPayload.put(Constants.ACTUAL_QUERY,searchQuery.get(Constants.ACTUAL_QUERY).asText() );
+            kafkaProducer.push(cbServerProperties.getUserRecentSearchTopic(), kafkaPayload);
         }
         return response;
     }

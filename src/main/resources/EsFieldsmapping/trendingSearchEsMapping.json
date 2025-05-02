@@ -1,8 +1,5 @@
 {
-  "query_id": {
-    "type": "keyword"
-  },
-  "query": {
+  "processedQuery": {
     "type": "text"
   },
   "search_count": {
