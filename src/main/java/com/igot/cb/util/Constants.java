@@ -81,6 +81,7 @@ public class Constants {
     public static final String SEARCH_CATEGORY = "search_category";
     public static final String PROCESSED_QUERY = "processedQuery";
     public static final String ACTUAL_QUERY = "actualQuery";
+    public static final String RECENT_SEARCHES_INDEX_NAME = "recent_searches";
 
 
     private Constants() {

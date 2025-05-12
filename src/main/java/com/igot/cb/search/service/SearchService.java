@@ -18,4 +18,8 @@ public interface SearchService {
     ApiResponse createUserTrendingSearches(JsonNode searchQuery);
 
     ApiResponse readUserTrendingSearches(SearchCriteria searchCriteria);
+
+    ApiResponse deleteUserRecentSearchesByUniqueId(String token,String uniqueId);
+
+    ApiResponse searchUserRecentSearches(SearchCriteria searchCriteria);
 }

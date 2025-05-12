@@ -24,5 +24,8 @@ public interface EsUtilService {
   BulkResponse saveAll(String esIndexName, List<JsonNode> entities) throws IOException;
 
   Object readDocument(String esIndexName, String documentId) throws IOException;
+  Object addDocument(String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath);
+
+  Object deleteDocument(String esIndexName, String documentId);
 
 }

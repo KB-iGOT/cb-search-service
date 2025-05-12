@@ -10,8 +10,11 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class CbServerProperties {
-  @Value("${elastic.required.field.search.json.path}")
-  private String elasticSearchJsonPath;
+  @Value("${elastic.required.field.trending.search.json.path}")
+  private String elasticSearchTrendingJsonPath;
+
+  @Value("${elastic.required.field.recent.search.json.path}")
+  private String elasticSearchRecentJsonPath;
 
   @Value("${non.text.fields}")
   private String nonTextFields;
