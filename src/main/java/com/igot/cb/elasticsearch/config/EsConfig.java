@@ -48,4 +48,19 @@ public class EsConfig  {
         ElasticsearchClient client = new ElasticsearchClient(elasticsearchTransport);
         return client;
     }
+
+    @Bean
+    public RestClient restClient() {
+        // Set up authentication credentials
+        final CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+        credentialsProvider.setCredentials(AuthScope.ANY,
+                new UsernamePasswordCredentials(elasticsearchUsername, elasticsearchPassword));
+
+        // Configure RestClient
+        RestClientBuilder builder = RestClient.builder(new HttpHost(elasticsearchHost, elasticsearchPort, "http"))
+                .setHttpClientConfigCallback(httpClientBuilder ->
+                        httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider));
+
+        return builder.build();
+    }
 }

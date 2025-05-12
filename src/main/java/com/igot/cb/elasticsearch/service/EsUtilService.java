@@ -5,6 +5,7 @@ import co.elastic.clients.elasticsearch.core.BulkResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.util.ApiResponse;
 
 import java.io.IOException;
 import java.util.List;
@@ -12,9 +13,7 @@ import java.util.Map;
 
 
 public interface EsUtilService {
-  String addDocument(String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath);
-
-  void deleteDocument(String documentId, String esIndexName);
+  ApiResponse upsertTrendingSearch(String esIndexName, String id, Map<String, Object> document, String jsonFilePath);
 
   void deleteDocumentsByCriteria(String esIndexName, Query query);
 
@@ -23,5 +22,10 @@ public interface EsUtilService {
   boolean isIndexPresent(String indexName);
 
   BulkResponse saveAll(String esIndexName, List<JsonNode> entities) throws IOException;
+
+  Object readDocument(String esIndexName, String documentId) throws IOException;
+  Object addDocument(String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath);
+
+  Object deleteDocument(String esIndexName, String documentId);
 
 }

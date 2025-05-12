@@ -1,10 +1,7 @@
 package com.igot.cb.elasticsearch.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.FieldValue;
-import co.elastic.clients.elasticsearch._types.Refresh;
-import co.elastic.clients.elasticsearch._types.SortOptions;
-import co.elastic.clients.elasticsearch._types.SortOrder;
+import co.elastic.clients.elasticsearch._types.*;
 import co.elastic.clients.elasticsearch._types.aggregations.*;
 import co.elastic.clients.elasticsearch._types.query_dsl.*;
 import co.elastic.clients.elasticsearch.core.*;
@@ -19,6 +16,7 @@ import co.elastic.clients.json.JsonData;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.util.ApiResponse;
 import com.igot.cb.util.CbServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.elasticsearch.config.EsConfig;
@@ -26,14 +24,21 @@ import com.igot.cb.elasticsearch.dto.FacetDTO;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
 import com.igot.cb.exceptions.CustomException;
+import com.igot.cb.util.ProjectUtil;
 import com.networknt.schema.JsonSchemaFactory;
 import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.client.Request;
+import org.elasticsearch.client.Response;
+import org.elasticsearch.client.RestClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
@@ -42,75 +47,72 @@ import java.util.stream.Collectors;
 @Slf4j
 public class EsUtilServiceImpl implements EsUtilService {
 
-    private final EsConfig esConfig;
+
     private final ElasticsearchClient elasticsearchClient;
     private final ObjectMapper objectMapper;
     private final Set<String> NON_TEXT_FIELDS;
+    private final RestClient restClient;
 
     @Autowired
     public EsUtilServiceImpl(ElasticsearchClient elasticsearchClient,
                              EsConfig esConnection,
                              ObjectMapper objectMapper,
-                             CbServerProperties cbServerProperties) {
+                             CbServerProperties cbServerProperties, RestClient restClient) {
         this.elasticsearchClient = elasticsearchClient;
-        this.esConfig = esConnection;
         this.objectMapper = objectMapper;
 
         this.NON_TEXT_FIELDS = Arrays.stream(cbServerProperties.getNonTextFields().split(","))
                 .map(String::trim)
                 .collect(Collectors.toSet());
+        this.restClient = restClient;
     }
 
 
-    @Override
-    public String addDocument(
-            String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath) {
-        log.info("EsUtilServiceImpl :: addDocument");
-        try {
-            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
-            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath);
-            Map<String, Object> map = objectMapper.readValue(schemaStream,
-                    new TypeReference<Map<String, Object>>() {
-                    });
-            Iterator<Entry<String, Object>> iterator = document.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Entry<String, Object> entry = iterator.next();
-                String key = entry.getKey();
-                if (!map.containsKey(key)) {
-                    iterator.remove();
-                }
-            }
-            IndexRequest<Map<String,Object>> indexRequest = new IndexRequest.Builder<Map<String, Object>>()
-                    .index(esIndexName)
-                    .id(id)
-                    .document(document)
-                    .refresh(Refresh.True)
-                    .build();
-            IndexResponse response = elasticsearchClient.index(indexRequest);
-            return "Successfully indexed document with id: " + response.result();
-        } catch (Exception e) {
-            log.error("Issue while Indexing to es: {}", e.getMessage());
-            return null;
-        }
-    }
+
 
     @Override
-    public void deleteDocument(String documentId, String esIndexName) {
+    public ApiResponse upsertTrendingSearch(
+            String esIndexName, String id, Map<String, Object> document, String jsonFilePath) {
+        log.info("EsUtilServiceImpl :: upsertTrendingSearch");
+        ApiResponse response = ProjectUtil.createDefaultResponse("upsertTrendingSearch");
         try {
-            DeleteRequest request = new DeleteRequest.Builder().index(esIndexName).id(documentId).build();
-            DeleteResponse response = elasticsearchClient.delete(request);
-            if (response.result().jsonValue().equalsIgnoreCase("DELETED")) {
-                log.info("Document deleted successfully from elasticsearch.");
-                RefreshRequest refreshRequest = new RefreshRequest.Builder().index(esIndexName).build();
-                elasticsearchClient.indices().refresh(refreshRequest);
-                log.info("Index refreshed to reflect the document deletion.");
+            String dateString = document.getOrDefault("last_searched", Instant.now().toString()).toString();
+            Instant instant = Instant.parse(dateString);
+            String esFormattedDate = instant.atZone(ZoneId.of("Asia/Kolkata"))
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"));
+            document.put("last_searched", esFormattedDate);
+            document.putIfAbsent("search_count", 1);
+            String scriptSource = """
+                    {
+                      "script": {
+                        "source": "if (ctx._source.search_count == null) { ctx._source.search_count = 1; } else { ctx._source.search_count += 1; } ctx._source.last_searched = params.date;",
+                        "params": { "date": "%s" }
+                      },
+                      "upsert": %s
+                    }
+                    """.formatted(esFormattedDate, objectMapper.writeValueAsString(document));
+
+            Request request = new Request("POST", "/" + esIndexName + "/_doc/" + id + "/_update?refresh=true");
+            request.setJsonEntity(scriptSource);
+            Response esResponse = restClient.performRequest(request);
+            String status = esResponse.getStatusLine().getReasonPhrase();
+            if ("OK".equalsIgnoreCase(status)||"Created".equalsIgnoreCase(status)) {
+                response.getParams().setStatus(Constants.SUCCESS);
             } else {
-                log.error("Document not found or failed to delete from elasticsearch.");
+                response.getParams().setErrMsg("Failed to update Elasticsearch document");
+                response.getParams().setStatus(Constants.FAILED);
+                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             }
+            return response;
         } catch (Exception e) {
-            log.error("Error occurred during deleting document in elasticsearch");
+            log.error("Error updating Elasticsearch document", e);
+            response.getParams().setErrMsg(e.getMessage());
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
         }
     }
+
 
     @Override
     public SearchResult searchDocuments(String esIndexName, SearchCriteria searchCriteria) {
@@ -213,12 +215,12 @@ public class EsUtilServiceImpl implements EsUtilService {
         if (filterCriteriaMap != null) {
             filterCriteriaMap.forEach(
                     (field, value) -> {
-                        String actualField = NON_TEXT_FIELDS.contains(field) ? field + Constants.KEYWORD : field;
+                        String actualField = NON_TEXT_FIELDS.contains(field) ? field : field + Constants.KEYWORD;
 
                         if (field.equals("must_not") && value instanceof ArrayList) {
-                            mustNotQueries.add(Query.of(q ->q.termsSet(t->t.field(actualField).terms((ArrayList<String>) value))));
+                            mustNotQueries.add(Query.of(q -> q.termsSet(t -> t.field(actualField).terms((ArrayList<String>) value))));
                         } else if (value instanceof Boolean) {
-                            boolQueries.add(Query.of(q ->q.term(t->t.field(actualField).value((boolean)value))));
+                            boolQueries.add(Query.of(q -> q.term(t -> t.field(actualField).value((boolean) value))));
                         } else if (value instanceof ArrayList) {
                             List<FieldValue> termsList = ((ArrayList<String>) value).stream()
                                     .map(FieldValue::of)
@@ -243,13 +245,13 @@ public class EsUtilServiceImpl implements EsUtilService {
                                             rangeQuery.gte(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_LESS_THAN_EQUALS:
-                                            rangeQuery.lte(JsonData.of(rangeValue) );
+                                            rangeQuery.lte(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_GREATER_THAN:
-                                            rangeQuery.gt(JsonData.of(rangeValue) );
+                                            rangeQuery.gt(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_LESS_THAN:
-                                            rangeQuery.lt(JsonData.of(rangeValue) );
+                                            rangeQuery.lt(JsonData.of(rangeValue));
                                             break;
                                     }
                                 });
@@ -283,25 +285,28 @@ public class EsUtilServiceImpl implements EsUtilService {
     private void addSortToSearchSourceBuilder(
             SearchCriteria searchCriteria, SearchRequest.Builder searchRequestBuilder) {
         if (isNotBlank(searchCriteria.getOrderBy()) && isNotBlank(searchCriteria.getOrderDirection())) {
-            if(searchCriteria.getOrderBy().equalsIgnoreCase("search_count")){
-                SortOrder sortOrder =
-                        Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.Asc : SortOrder.Desc;
-                searchRequestBuilder.sort(SortOptions.of(so -> so
-                        .field(f -> f
-                                .field(searchCriteria.getOrderBy())
-                                .order(sortOrder)
-                        )
-                ));
-            }else {
-                SortOrder sortOrder =
-                        Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.Asc : SortOrder.Desc;
-                searchRequestBuilder.sort(SortOptions.of(so -> so
-                        .field(f -> f
-                                .field(searchCriteria.getOrderBy() + Constants.KEYWORD)
-                                .order(sortOrder)
-                        )
-                ));
-            }
+//            if (searchCriteria.getOrderBy().equalsIgnoreCase("search_count")) {
+//                SortOrder sortOrder =
+//                        Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.Asc : SortOrder.Desc;
+//                searchRequestBuilder.sort(SortOptions.of(so -> so
+//                        .field(f -> f
+//                                .field(searchCriteria.getOrderBy())
+//                                .order(sortOrder)
+//                        )
+//                ));
+//            } else {
+            SortOrder sortOrder =
+                    Constants.ASC.equals(searchCriteria.getOrderDirection()) ? SortOrder.Asc : SortOrder.Desc;
+            String sortField = NON_TEXT_FIELDS.contains(searchCriteria.getOrderBy())
+                    ? searchCriteria.getOrderBy()
+                    : searchCriteria.getOrderBy() + Constants.KEYWORD;
+            searchRequestBuilder.sort(SortOptions.of(so -> so
+                    .field(f -> f
+                            .field(sortField)
+                            .order(sortOrder)
+                    )
+            ));
+
         }
     }
 
@@ -353,22 +358,30 @@ public class EsUtilServiceImpl implements EsUtilService {
     @Override
     public void deleteDocumentsByCriteria(String esIndexName, Query query) {
         try {
-            HitsMetadata<Object> searchHits = executeSearch(esIndexName, query);
-            assert searchHits.total() != null;
-            if (searchHits.total().value() > 0) {
-                BulkResponse bulkResponse = deleteMatchingDocuments(esIndexName, searchHits);
-                if (!bulkResponse.errors()) {
-                    log.info("Documents matching the criteria deleted successfully from Elasticsearch.");
-                } else {
-                    log.error("Some documents failed to delete from Elasticsearch.");
-                }
-            } else {
-                log.info("No documents match the criteria.");
+            // Execute search with the given query
+            SearchRequest searchRequest = new SearchRequest.Builder()
+                    .index(esIndexName)
+                    .query(query)
+                    .build();
+
+            SearchResponse<Object> searchResponse = elasticsearchClient.search(searchRequest, Object.class);
+            for (Hit<Object> hit : searchResponse.hits().hits()) {
+                String docId = hit.id();
+                DeleteRequest deleteRequest = new DeleteRequest.Builder()
+                        .index("recent_searches")
+                        .id(docId)
+                        .build();
+                elasticsearchClient.delete(deleteRequest);
             }
+            RefreshRequest refreshRequest = new RefreshRequest.Builder()
+                    .index("recent_searches")
+                    .build();
+            elasticsearchClient.indices().refresh(refreshRequest);
         } catch (Exception e) {
             log.error("Error occurred during deleting documents by criteria from Elasticsearch.", e);
         }
     }
+
 
     private HitsMetadata<Object> executeSearch(String esIndexName, Query query) throws IOException {
         SearchRequest searchRequest = new SearchRequest.Builder()
@@ -378,20 +391,6 @@ public class EsUtilServiceImpl implements EsUtilService {
         SearchResponse<Object> searchResponse =
                 elasticsearchClient.search(searchRequest, Object.class);
         return searchResponse.hits();
-    }
-
-    private BulkResponse deleteMatchingDocuments(String esIndexName,  HitsMetadata<Object> searchHits)
-            throws IOException {
-        List<BulkOperation> operations = new ArrayList<>();
-        for (Hit<Object> hit : searchHits.hits()) {
-            new DeleteRequest.Builder()
-                    .index(esIndexName)
-                    .id(hit.id())
-                    .build();
-            operations.add(new BulkOperation.Builder().delete(d -> d.index(esIndexName).id(hit.id())).build());
-        }
-        BulkRequest bulkRequest = new BulkRequest.Builder().operations(operations).build();
-        return elasticsearchClient.bulk(bulkRequest);
     }
 
     private boolean isRangeQuery(Map<String, Object> nestedMap) {
@@ -509,13 +508,17 @@ public class EsUtilServiceImpl implements EsUtilService {
 
     @Override
     public boolean isIndexPresent(String indexName) {
+        GetIndexRequest request = new GetIndexRequest.Builder().index(indexName).build();
         try {
-            GetIndexRequest request = new GetIndexRequest.Builder().index(indexName).build();
-            GetIndexResponse response = elasticsearchClient.indices().get(request);
-            return response != null;
+            elasticsearchClient.indices().get(request);
+            return true;
+        } catch (ElasticsearchException e) {
+            if (e.status() == 404) {
+                return false;
+            }
+            throw e; // rethrow other exceptions
         } catch (IOException e) {
-            log.error("Error checking if index exists", e);
-            return false;
+            throw new RuntimeException(e);
         }
     }
 
@@ -542,10 +545,68 @@ public class EsUtilServiceImpl implements EsUtilService {
         } catch (Exception e) {
             log.error(e.getMessage());
             throw new CustomException("error bulk uploading", e.getMessage(),
-                HttpStatus.INTERNAL_SERVER_ERROR);
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
+    @Override
+    public Object readDocument(String esIndexName, String documentId) throws IOException {
+        GetRequest getRequest = GetRequest.of(g -> g.index(esIndexName).id(documentId));
+        GetResponse<Object> response = elasticsearchClient.get(getRequest, Object.class);
+        if (!response.found()) {
+            return "Document not found in Elasticsearch.";
+        }
+        return response.source();
+    }
 
+    @Override
+    public Object addDocument(String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath){
+        log.info("EsUtilServiceImpl :: addDocument");
+        try {
+            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
+            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath);
+            Map<String, Object> map = objectMapper.readValue(schemaStream,
+                    new TypeReference<Map<String, Object>>() {
+                    });
+            Iterator<Entry<String, Object>> iterator = document.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Entry<String, Object> entry = iterator.next();
+                String key = entry.getKey();
+                if (!map.containsKey(key)) {
+                    iterator.remove();
+                }
+            }
+            IndexRequest<Map<String,Object>> indexRequest = new IndexRequest.Builder<Map<String, Object>>()
+                    .index(esIndexName)
+                    .id(id)
+                    .document(document)
+                    .refresh(Refresh.True)
+                    .build();
+            IndexResponse response = elasticsearchClient.index(indexRequest);
+            return "Successfully indexed document with id: " + response.result();
+        } catch (Exception e) {
+            log.error("Issue while Indexing to es: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public Object deleteDocument(String esIndexName, String documentId){
+        try {
+            DeleteRequest request = new DeleteRequest.Builder().index(esIndexName).id(documentId).build();
+            DeleteResponse response = elasticsearchClient.delete(request);
+            if (response.result().jsonValue().equalsIgnoreCase("DELETED")) {
+                log.info("Document deleted successfully from elasticsearch.");
+                RefreshRequest refreshRequest = new RefreshRequest.Builder().index(esIndexName).build();
+                elasticsearchClient.indices().refresh(refreshRequest);
+                log.info("Index refreshed to reflect the document deletion.");
+            } else {
+                log.error("Document not found or failed to delete from elasticsearch.");
+            }
+        } catch (Exception e) {
+            log.error("Error occurred during deleting document in elasticsearch");
+        }
+        return null;
+    }
 }
 

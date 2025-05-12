@@ -28,9 +28,21 @@ public class SearchController {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
+    @PostMapping("/v1/recent/search")
+    public ResponseEntity<ApiResponse> searchUserRecentSearches(@RequestBody SearchCriteria searchCriteria) {
+        ApiResponse response = searchService.searchUserRecentSearches(searchCriteria);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
     @DeleteMapping("/v1/recent/delete")
     public ResponseEntity<ApiResponse> deleteUserRecentSearches(@RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         ApiResponse response = searchService.deleteUserRecentSearches(token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @DeleteMapping("/v1/recent/delete/uniqueid/{uniqueId}")
+    public ResponseEntity<ApiResponse> deleteUserRecentSearchesByUniqueId(@RequestHeader(Constants.X_AUTH_TOKEN) String token, @PathVariable String uniqueId) {
+        ApiResponse response = searchService.deleteUserRecentSearchesByUniqueId(token,uniqueId);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
