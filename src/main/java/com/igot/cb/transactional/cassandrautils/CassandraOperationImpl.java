@@ -203,7 +203,7 @@ public class CassandraOperationImpl implements CassandraOperation {
                 if ("asc".equalsIgnoreCase(orderDirection)) {
                     order = ClusteringOrder.ASC;
                 }
-                selectQuery = selectQuery.orderBy("unique_id", order); // or Sort.asc("unique_id")
+                selectQuery = selectQuery.orderBy("timestamp", order); // or Sort.asc("unique_id")
             }
             if (limit != null) selectQuery = selectQuery.limit(limit);
             String queryString = selectQuery.toString();
@@ -232,6 +232,8 @@ public class CassandraOperationImpl implements CassandraOperation {
             response.put(Constants.RESPONSE, Constants.SUCCESS);
         } catch (Exception e) {
             log.error("Exception occurred while deleting from " + tableName + ": " + e.getMessage(), e);
+            response.put(Constants.RESPONSE, Constants.FAILED);
+            response.put(Constants.ERROR_MESSAGE, e.getMessage());
         }
        return response;
     }

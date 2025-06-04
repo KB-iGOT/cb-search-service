@@ -28,33 +28,16 @@ public class SearchController {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @PostMapping("/v1/recent/search")
-    public ResponseEntity<ApiResponse> searchUserRecentSearches(@RequestBody SearchCriteria searchCriteria) {
-        ApiResponse response = searchService.searchUserRecentSearches(searchCriteria);
-        return new ResponseEntity<>(response, response.getResponseCode());
-    }
-
     @DeleteMapping("/v1/recent/delete")
     public ResponseEntity<ApiResponse> deleteUserRecentSearches(@RequestHeader(Constants.X_AUTH_TOKEN) String token) {
-        ApiResponse response = searchService.deleteUserRecentSearches(token);
+        ApiResponse response = searchService.deleteUserAllRecentSearches(token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @DeleteMapping("/v1/recent/delete/uniqueid/{uniqueId}")
-    public ResponseEntity<ApiResponse> deleteUserRecentSearchesByUniqueId(@RequestHeader(Constants.X_AUTH_TOKEN) String token, @PathVariable String uniqueId) {
-        ApiResponse response = searchService.deleteUserRecentSearchesByUniqueId(token,uniqueId);
+    @DeleteMapping("/v1/recent/delete/timestamp/{timestamp}")
+    public ResponseEntity<ApiResponse> deleteUserRecentSearchesByUniqueId(@RequestHeader(Constants.X_AUTH_TOKEN) String token, @PathVariable Long timestamp) {
+        ApiResponse response = searchService.deleteUserRecentSearchesByTimestamp(token,timestamp);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @PostMapping("/v1/trending/create")
-    public ResponseEntity<ApiResponse> createTrendingSearches(@RequestBody JsonNode searchQuery) {
-        ApiResponse response = searchService.createUserTrendingSearches(searchQuery);
-        return new ResponseEntity<>(response, response.getResponseCode());
-    }
-
-    @PostMapping("/v1/trending/read")
-    public ResponseEntity<ApiResponse> readTrendingSearches(@RequestBody SearchCriteria searchCriteria) {
-        ApiResponse response = searchService.readUserTrendingSearches(searchCriteria);
-        return new ResponseEntity<>(response, response.getResponseCode());
-    }
 }

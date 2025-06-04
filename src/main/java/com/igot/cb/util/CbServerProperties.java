@@ -18,7 +18,4 @@ public class CbServerProperties {
 
   @Value("${non.text.fields}")
   private String nonTextFields;
-
-  @Value("${kafka.topic.user.recent.searches}")
-  private String userRecentSearchTopic;
 }

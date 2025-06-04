@@ -13,13 +13,7 @@ public interface SearchService {
 
     ApiResponse readUserRecentSearches(String token);
 
-    ApiResponse deleteUserRecentSearches(String token);
+    ApiResponse deleteUserAllRecentSearches(String token);
 
-    ApiResponse createUserTrendingSearches(JsonNode searchQuery);
-
-    ApiResponse readUserTrendingSearches(SearchCriteria searchCriteria);
-
-    ApiResponse deleteUserRecentSearchesByUniqueId(String token,String uniqueId);
-
-    ApiResponse searchUserRecentSearches(SearchCriteria searchCriteria);
+    ApiResponse deleteUserRecentSearchesByTimestamp(String token,Long timestamp);
 }
