@@ -1,7 +1,6 @@
 package com.igot.cb.search.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.search.service.SearchService;
 import com.igot.cb.util.ApiResponse;
 import com.igot.cb.util.Constants;

@@ -44,7 +44,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         String nlpSearchQuery = searchQuery.path(Constants.NLP_SEARCH_QUERY_KEY).asText(null);
-        JsonNode categoryNode = searchQuery.get(Constants.SEARCH_CATEGORY);
+        JsonNode categoryNode = searchQuery.get(Constants.SEARCH_CATEGORY_KEY);
         JsonNode actualQueryNode = searchQuery.get(Constants.SEARCH_QUERY_KEY);
 
         if (!isValidCategory(categoryNode)) {
