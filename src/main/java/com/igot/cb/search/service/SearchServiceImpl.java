@@ -45,21 +45,17 @@ public class SearchServiceImpl implements SearchService {
         }
 
         String nlpSearchQuery = searchQuery.path(Constants.NLP_SEARCH_QUERY_KEY).asText(null);
-        JsonNode categoryNode = searchQuery.get(Constants.SEARCH_CATEGORY_KEY);
-        JsonNode actualQueryNode = searchQuery.get(Constants.SEARCH_QUERY_KEY);
+        String categoryNode = searchQuery.path(Constants.SEARCH_CATEGORY_KEY).asText(null);
+        String actualQuery = searchQuery.hasNonNull(Constants.SEARCH_QUERY_KEY)
+                ? searchQuery.get(Constants.SEARCH_QUERY_KEY).asText().toLowerCase()
+                : null;
 
-        if (StringUtils.isBlank(nlpSearchQuery) ||
-                categoryNode == null || categoryNode.isEmpty() ||
-                actualQueryNode == null || actualQueryNode.isEmpty()) {
 
+        if (StringUtils.isBlank(nlpSearchQuery) || StringUtils.isBlank(actualQuery) || StringUtils.isBlank(categoryNode)) {
             return errorResponse(response, HttpStatus.BAD_REQUEST, "One or more required fields (nlpSearchQuery, searchCategory, searchQuery) are missing or empty");
         }
 
-        Set<String> categorySet = new HashSet<>(Collections.singleton(categoryNode.asText()));
-        Set<String> actualQuerySet = new HashSet<>();
-        if (actualQueryNode != null && !actualQueryNode.isNull()) {
-            actualQuerySet.add(actualQueryNode.asText());
-        }
+        Set<String> categorySet = new HashSet<>(Collections.singleton(categoryNode));
 
         Map<String, Object> queryMap = new HashMap<>();
         queryMap.put(Constants.USERID, userId);
@@ -72,16 +68,16 @@ public class SearchServiceImpl implements SearchService {
         );
 
         Optional<Map<String, Object>> matchedRecordOpt = existingSearches.stream()
-                .filter(record -> nlpSearchQuery.equalsIgnoreCase((String) record.get(Constants.NLP_SEARCH_QUERY)))
+                .filter(record -> actualQuery.equalsIgnoreCase((String) record.get(Constants.SEARCH_QUERY)))
                 .findFirst();
 
         long currentTimestamp = System.currentTimeMillis();
         Map<String, Object> userSearchQuery = new HashMap<>();
         userSearchQuery.put(Constants.USERID, userId);
         userSearchQuery.put(Constants.TIMESTAMP, currentTimestamp);
-        userSearchQuery.put(Constants.NLP_SEARCH_QUERY, searchQuery.path(Constants.NLP_SEARCH_QUERY_KEY).asText());
+        userSearchQuery.put(Constants.NLP_SEARCH_QUERY, nlpSearchQuery);
         userSearchQuery.put(Constants.SEARCH_CATEGORY, categorySet);
-        userSearchQuery.put(Constants.SEARCH_QUERY, actualQuerySet);
+        userSearchQuery.put(Constants.SEARCH_QUERY, actualQuery);
 
         if (matchedRecordOpt.isPresent()) {
             Map<String, Object> matchedRecord = matchedRecordOpt.get();
@@ -94,12 +90,7 @@ public class SearchServiceImpl implements SearchService {
             if (existingCategories != null) {
                 categorySet.addAll(existingCategories);
             }
-            Set<String> existingSearchQueries = (Set<String>) matchedRecord.get(Constants.SEARCH_QUERY);
-            if (existingCategories != null) {
-                actualQuerySet.addAll(existingSearchQueries);
-            }
             userSearchQuery.put(Constants.SEARCH_CATEGORY, categorySet);
-            userSearchQuery.put(Constants.SEARCH_QUERY, actualQuerySet);
         }
 
         ApiResponse dbResponse = (ApiResponse) cassandraOperation.insertRecord(
