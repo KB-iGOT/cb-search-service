@@ -48,8 +48,11 @@ public class SearchServiceImpl implements SearchService {
         JsonNode categoryNode = searchQuery.get(Constants.SEARCH_CATEGORY_KEY);
         JsonNode actualQueryNode = searchQuery.get(Constants.SEARCH_QUERY_KEY);
 
-        if (!isValidCategory(categoryNode)) {
-            return errorResponse(response, HttpStatus.BAD_REQUEST, "search category is empty");
+        if (StringUtils.isBlank(nlpSearchQuery) ||
+                categoryNode == null || categoryNode.isEmpty() ||
+                actualQueryNode == null || actualQueryNode.isEmpty()) {
+
+            return errorResponse(response, HttpStatus.BAD_REQUEST, "One or more required fields (nlpSearchQuery, searchCategory, searchQuery) are missing or empty");
         }
 
         Set<String> categorySet = new HashSet<>(Collections.singleton(categoryNode.asText()));
@@ -118,10 +121,6 @@ public class SearchServiceImpl implements SearchService {
         return response;
     }
 
-    private boolean isValidCategory(JsonNode node) {
-        return node != null && !node.isNull() && !node.asText().trim().isEmpty();
-    }
-
     private ApiResponse errorResponse(ApiResponse response, HttpStatus status, String errorMsg) {
         response.getParams().setErrMsg(errorMsg);
         response.getParams().setStatus(Constants.FAILED);
@@ -140,7 +139,7 @@ public class SearchServiceImpl implements SearchService {
         }
         String cachedJson = cacheService.getCache(userId);
         if (StringUtils.isNotEmpty(cachedJson)) {
-            log.info("CiosContentServiceImpl::read:Record coming from redis cache");
+            log.info("SearchServiceImpl::read:Record coming from redis cache");
             try {
                 List<Map<String, Object>> result= objectMapper.readValue(cachedJson, new TypeReference<List<Map<String, Object>>>() {
                 });
