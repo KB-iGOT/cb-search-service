@@ -125,6 +125,7 @@ public class SearchServiceImpl implements SearchService {
         String userId = accessTokenValidator.verifyUserToken(token);
         if (StringUtils.isBlank(userId) || userId.equalsIgnoreCase(Constants.UNAUTHORIZED)) {
             response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
+            response.getParams().setStatus(Constants.FAILED);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return response;
         }
@@ -170,6 +171,7 @@ public class SearchServiceImpl implements SearchService {
         String userId = accessTokenValidator.verifyUserToken(token);
         if (StringUtils.isBlank(userId) || userId.equalsIgnoreCase(Constants.UNAUTHORIZED)) {
             response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
+            response.getParams().setStatus(Constants.FAILED);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return response;
         }
@@ -196,6 +198,7 @@ public class SearchServiceImpl implements SearchService {
         String userId = accessTokenValidator.verifyUserToken(token);
         if (StringUtils.isBlank(userId) || userId.equalsIgnoreCase(Constants.UNAUTHORIZED)) {
             response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
+            response.getParams().setStatus(Constants.FAILED);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return response;
         }
