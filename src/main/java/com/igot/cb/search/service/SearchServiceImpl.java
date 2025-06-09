@@ -47,7 +47,7 @@ public class SearchServiceImpl implements SearchService {
         String nlpSearchQuery = searchQuery.path(Constants.NLP_SEARCH_QUERY_KEY).asText(null);
         String categoryNode = searchQuery.path(Constants.SEARCH_CATEGORY_KEY).asText(null);
         String actualQuery = searchQuery.hasNonNull(Constants.SEARCH_QUERY_KEY)
-                ? searchQuery.get(Constants.SEARCH_QUERY_KEY).asText().toLowerCase()
+                ? searchQuery.get(Constants.SEARCH_QUERY_KEY).asText().toLowerCase().trim().replaceAll("\\s+", " ")
                 : null;
 
 
