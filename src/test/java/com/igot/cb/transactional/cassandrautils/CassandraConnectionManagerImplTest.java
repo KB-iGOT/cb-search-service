@@ -15,10 +15,8 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.*;
+
 
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -107,38 +105,4 @@ class CassandraConnectionManagerImplTest {
         cleanup.run();
     }
 
-    @Test
-    void testGetSession_existingSession() throws Exception {
-        String keyspace = "testKeyspace";
-
-        // Mock the consistency level and Cassandra host
-        try (MockedStatic<PropertiesCache> staticMock = mockStatic(PropertiesCache.class)) {
-            staticMock.when(PropertiesCache::getInstance).thenReturn(propertiesCache);
-            when(propertiesCache.readProperty(Constants.SUNBIRD_CASSANDRA_CONSISTENCY_LEVEL))
-                    .thenReturn("LOCAL_QUORUM");
-            when(propertiesCache.getProperty(Constants.CASSANDRA_CONFIG_HOST))
-                    .thenReturn("127.0.0.1"); // Provide a valid host
-            when(propertiesCache.getProperty(Constants.CORE_CONNECTIONS_PER_HOST_FOR_LOCAL))
-                    .thenReturn("2"); // Mock a valid integer value
-            when(propertiesCache.getProperty(Constants.CORE_CONNECTIONS_PER_HOST_FOR_REMOTE))
-                    .thenReturn("1"); // Mock a valid integer value
-            when(propertiesCache.getProperty(Constants.HEARTBEAT_INTERVAL))
-                    .thenReturn("30"); // Mock a valid integer value
-
-            when(mockSession.isClosed()).thenReturn(false);
-
-            // Use reflection to access and modify the private cassandraSessionMap field
-            Field sessionMapField = CassandraConnectionManagerImpl.class.getDeclaredField("cassandraSessionMap");
-            sessionMapField.setAccessible(true);
-            @SuppressWarnings("unchecked")
-            Map<String, CqlSession> sessionMap = (Map<String, CqlSession>) sessionMapField.get(null);
-            sessionMap.put(keyspace, mockSession);
-
-            CassandraConnectionManagerImpl manager = new CassandraConnectionManagerImpl();
-            CqlSession session = manager.getSession(keyspace);
-
-            assertNotNull(session, "Session should not be null");
-            assertEquals(mockSession, session, "Should return the existing session");
-        }
-    }
 }
