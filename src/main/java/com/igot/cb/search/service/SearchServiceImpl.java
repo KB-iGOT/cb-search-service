@@ -15,8 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 @Slf4j
@@ -41,6 +39,10 @@ public class SearchServiceImpl implements SearchService {
 
         if (StringUtils.isBlank(userId) || Constants.UNAUTHORIZED.equalsIgnoreCase(userId)) {
             return errorResponse(response, HttpStatus.BAD_REQUEST, Constants.USER_ID_DOESNT_EXIST);
+        }
+
+        if (searchQuery == null || searchQuery.isEmpty()) {
+            return errorResponse(response, HttpStatus.BAD_REQUEST, "search query is empty");
         }
 
         String nlpSearchQuery = searchQuery.path(Constants.NLP_SEARCH_QUERY_KEY).asText(null);
