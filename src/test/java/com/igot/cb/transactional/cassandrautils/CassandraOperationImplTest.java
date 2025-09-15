@@ -539,14 +539,14 @@ class CassandraOperationImplTest {
         Map<String, Object> propertyMap = new HashMap<>();
         propertyMap.put("id", "123");
         List<String> fields = Arrays.asList("id", "name");
-        
+
         when(connectionManager.getSession(keyspace)).thenReturn(mockSession);
         when(mockSession.execute(any(SimpleStatement.class))).thenReturn(mockResultSet);
-        
+
         List<Map<String, Object>> expectedResponse = Arrays.asList(
             Map.of("id", "123", "name", "Ajay")
         );
-        
+
         try (MockedStatic<CassandraUtil> utilMock = mockStatic(CassandraUtil.class)) {
             utilMock.when(() -> CassandraUtil.createResponse(mockResultSet))
                     .thenReturn(expectedResponse);
@@ -570,7 +570,7 @@ class CassandraOperationImplTest {
         Map<String, Object> propertyMap = new HashMap<>();
         propertyMap.put("id", "123");
         List<String> fields = Arrays.asList("id", "name");
-        
+
         when(connectionManager.getSession(keyspace)).thenThrow(new RuntimeException("DB error"));
 
         // Act
