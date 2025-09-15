@@ -238,13 +238,13 @@ public class SearchServiceImpl implements SearchService {
                 null);
 
         if (!records.isEmpty()) {
-            Map<String, Object> record = records.get(0);
+            Map<String, Object> existingRecord = records.get(0);
             Map<String, Object> primaryKey = new HashMap<>();
             primaryKey.put("user_id", userId);
-            primaryKey.put("timestamp", record.get(Constants.TIMESTAMP));
+            primaryKey.put("timestamp", existingRecord.get(Constants.TIMESTAMP));
             primaryKey.put(Constants.IS_ACTIVE, true);
-            record.put(Constants.IS_ACTIVE, false);
-            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSES, Constants.TABLE_USER_RECENT_SEARCH, record);
+            existingRecord.put(Constants.IS_ACTIVE, false);
+            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSES, Constants.TABLE_USER_RECENT_SEARCH, existingRecord);
             Map<String, Object> deleteResult = cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD_COURSES, Constants.TABLE_USER_RECENT_SEARCH, propertyMap);
             if (!Constants.SUCCESS.equalsIgnoreCase(String.valueOf(deleteResult.get(Constants.RESPONSE)))) {
                 return errorResponse(response, HttpStatus.INTERNAL_SERVER_ERROR, String.valueOf(deleteResult.get("errmsg")));

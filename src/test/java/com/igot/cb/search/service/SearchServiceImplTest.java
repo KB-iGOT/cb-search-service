@@ -111,12 +111,12 @@ class SearchServiceImplTest {
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
         // Sample active record
-        Map<String, Object> record = new HashMap<>();
-        record.put("user_id", userId);
-        record.put("timestamp", 123456789L);
-        record.put("search_query", "test");
-        record.put("is_active", true);
-        List<Map<String, Object>> records = List.of(record);
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put("user_id", userId);
+        searchRecord.put("timestamp", 123456789L);
+        searchRecord.put("search_query", "test");
+        searchRecord.put("is_active", true);
+        List<Map<String, Object>> records = List.of(searchRecord);
 
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 anyString(), anyString(), anyMap(), isNull(), isNull())).thenReturn(records);
@@ -146,17 +146,17 @@ class SearchServiceImplTest {
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
         // Prepare record
-        Map<String, Object> record = new HashMap<>();
-        record.put("user_id", userId);
-        record.put("timestamp", timestamp);
-        record.put("search_query", "AI");
-        record.put("nlp_search_query", "Artificial Intelligence");
-        record.put("search_category", Set.of("course"));
-        record.put("is_active", true);
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put("user_id", userId);
+        searchRecord.put("timestamp", timestamp);
+        searchRecord.put("search_query", "AI");
+        searchRecord.put("nlp_search_query", "Artificial Intelligence");
+        searchRecord.put("search_category", Set.of("course"));
+        searchRecord.put("is_active", true);
 
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 anyString(), anyString(), anyMap(), isNull(), isNull())
-        ).thenReturn(List.of(record));
+        ).thenReturn(List.of(searchRecord));
 
         when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
                 .thenReturn(Collections.singletonMap(Constants.RESPONSE, Constants.SUCCESS));
