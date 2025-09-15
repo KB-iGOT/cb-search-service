@@ -121,10 +121,10 @@ class CassandraOperationImplTest {
         when(connectionManager.getSession(anyString())).thenReturn(mockSession);
         try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
             List<Map<String, Object>> expectedResponse = new ArrayList<>();
-            Map<String, Object> record = new HashMap<>();
-            record.put("id", "123");
-            record.put("name", "Test");
-            expectedResponse.add(record);
+            Map<String, Object> searchRecord = new HashMap<>();
+            searchRecord.put("id", "123");
+            searchRecord.put("name", "Test");
+            expectedResponse.add(searchRecord);
 
             cassandraUtilMockedStatic.when(() -> CassandraUtil.createResponse(any(ResultSet.class)))
                     .thenReturn(expectedResponse);
@@ -150,10 +150,10 @@ class CassandraOperationImplTest {
         when(connectionManager.getSession(anyString())).thenReturn(mockSession);
         try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
             List<Map<String, Object>> expectedResponse = new ArrayList<>();
-            Map<String, Object> record = new HashMap<>();
-            record.put("id", "123");
-            record.put("name", "Test");
-            expectedResponse.add(record);
+            Map<String, Object> searchRecord = new HashMap<>();
+            searchRecord.put("id", "123");
+            searchRecord.put("name", "Test");
+            expectedResponse.add(searchRecord);
 
             cassandraUtilMockedStatic.when(() -> CassandraUtil.createResponse(any(ResultSet.class)))
                     .thenReturn(expectedResponse);
@@ -195,10 +195,10 @@ class CassandraOperationImplTest {
         when(connectionManager.getSession(anyString())).thenReturn(mockSession);
         try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = mockStatic(CassandraUtil.class)) {
             List<Map<String, Object>> expectedResponse = new ArrayList<>();
-            Map<String, Object> record = new HashMap<>();
-            record.put("id", "123");
-            record.put("timestamp", "2023-01-01T00:00:00Z");
-            expectedResponse.add(record);
+            Map<String, Object> searchRecord = new HashMap<>();
+            searchRecord.put("id", "123");
+            searchRecord.put("timestamp", "2023-01-01T00:00:00Z");
+            expectedResponse.add(searchRecord);
 
             cassandraUtilMockedStatic.when(() -> CassandraUtil.createResponse(any(ResultSet.class)))
                     .thenReturn(expectedResponse);

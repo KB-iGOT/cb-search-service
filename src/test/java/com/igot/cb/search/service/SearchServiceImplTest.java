@@ -302,13 +302,13 @@ class SearchServiceImplTest {
         String token = "validToken";
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
-        Map<String, Object> record = new HashMap<>();
-        record.put(Constants.SEARCH_QUERY, "java");
-        record.put(Constants.IS_ACTIVE, false);
-        record.put(Constants.TIMESTAMP, 12345L);
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put(Constants.SEARCH_QUERY, "java");
+        searchRecord.put(Constants.IS_ACTIVE, false);
+        searchRecord.put(Constants.TIMESTAMP, 12345L);
 
         when(cassandraOperation.getRecordsByOrder(any(), any(), any(), any(), any()))
-                .thenReturn(List.of(record));
+                .thenReturn(List.of(searchRecord));
 
         ApiResponse mockApiResponse = new ApiResponse();
         mockApiResponse.put(Constants.RESPONSE, Constants.SUCCESS);
@@ -328,14 +328,14 @@ class SearchServiceImplTest {
         String token = "validToken";
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
-        Map<String, Object> record = new HashMap<>();
-        record.put(Constants.SEARCH_QUERY, "java");
-        record.put(Constants.IS_ACTIVE, true);
-        record.put(Constants.TIMESTAMP, 12345L);
-        record.put(Constants.SEARCH_CATEGORY, null);
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put(Constants.SEARCH_QUERY, "java");
+        searchRecord.put(Constants.IS_ACTIVE, true);
+        searchRecord.put(Constants.TIMESTAMP, 12345L);
+        searchRecord.put(Constants.SEARCH_CATEGORY, null);
 
         when(cassandraOperation.getRecordsByOrder(any(), any(), any(), any(), any()))
-                .thenReturn(List.of(record));
+                .thenReturn(List.of(searchRecord));
 
         ApiResponse mockApiResponse = new ApiResponse();
         mockApiResponse.put(Constants.RESPONSE, Constants.SUCCESS);
@@ -354,14 +354,14 @@ class SearchServiceImplTest {
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
         Set<String> categories = new HashSet<>(Arrays.asList("books", "java"));
-        Map<String, Object> record = new HashMap<>();
-        record.put(Constants.SEARCH_QUERY, "java");
-        record.put(Constants.IS_ACTIVE, true);
-        record.put(Constants.TIMESTAMP, 12345L);
-        record.put(Constants.SEARCH_CATEGORY, categories);
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put(Constants.SEARCH_QUERY, "java");
+        searchRecord.put(Constants.IS_ACTIVE, true);
+        searchRecord.put(Constants.TIMESTAMP, 12345L);
+        searchRecord.put(Constants.SEARCH_CATEGORY, categories);
 
         when(cassandraOperation.getRecordsByOrder(any(), any(), any(), any(), any()))
-                .thenReturn(List.of(record));
+                .thenReturn(List.of(searchRecord));
 
         ApiResponse mockApiResponse = new ApiResponse();
         mockApiResponse.put(Constants.RESPONSE, Constants.SUCCESS);
