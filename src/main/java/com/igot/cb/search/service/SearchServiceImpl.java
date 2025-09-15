@@ -20,20 +20,24 @@ import java.util.*;
 @Slf4j
 public class SearchServiceImpl implements SearchService {
 
-    @Autowired
-    private AccessTokenValidator accessTokenValidator;
+    private final AccessTokenValidator accessTokenValidator;
+    private final CassandraOperation cassandraOperation;
+    private final CacheService cacheService;
+    private final ObjectMapper objectMapper;
+    private final CbServerProperties cbServerProperties;
 
     @Autowired
-    private CassandraOperation cassandraOperation;
-
-    @Autowired
-    private CacheService cacheService;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    private CbServerProperties cbServerProperties;
+    public SearchServiceImpl(AccessTokenValidator accessTokenValidator,
+                             CassandraOperation cassandraOperation,
+                             CacheService cacheService,
+                             ObjectMapper objectMapper,
+                             CbServerProperties cbServerProperties) {
+        this.accessTokenValidator = accessTokenValidator;
+        this.cassandraOperation = cassandraOperation;
+        this.cacheService = cacheService;
+        this.objectMapper = objectMapper;
+        this.cbServerProperties = cbServerProperties;
+    }
 
     @Override
     public ApiResponse createUserRecentSearches(JsonNode searchQuery, String token) {
@@ -72,21 +76,21 @@ public class SearchServiceImpl implements SearchService {
         );
 
         List<Map<String, Object>> duplicateRecords = existingSearches.stream()
-                .filter(record -> actualQuery.equalsIgnoreCase((String) record.get(Constants.SEARCH_QUERY)))
+                .filter(searchRecord -> actualQuery.equalsIgnoreCase((String) searchRecord.get(Constants.SEARCH_QUERY)))
                 .toList();
 
-        for (Map<String, Object> record : duplicateRecords) {
+        for (Map<String, Object> searchRecord : duplicateRecords) {
             Map<String, Object> compositeKey = Map.of(
                     Constants.USERID, userId,
-                    Constants.IS_ACTIVE, record.get(Constants.IS_ACTIVE),
-                    Constants.TIMESTAMP, record.get(Constants.TIMESTAMP)
+                    Constants.IS_ACTIVE, searchRecord.get(Constants.IS_ACTIVE),
+                    Constants.TIMESTAMP, searchRecord.get(Constants.TIMESTAMP)
             );
 
             cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD_COURSES,
                     Constants.TABLE_USER_RECENT_SEARCH, compositeKey);
 
-            if (Boolean.TRUE.equals(record.get(Constants.IS_ACTIVE))) {
-                Set<String> existingCategories = (Set<String>) record.get(Constants.SEARCH_CATEGORY);
+            if (Boolean.TRUE.equals(searchRecord.get(Constants.IS_ACTIVE))) {
+                Set<String> existingCategories = (Set<String>) searchRecord.get(Constants.SEARCH_CATEGORY);
                 if (existingCategories != null) {
                     categorySet.addAll(existingCategories);
                 }
@@ -187,19 +191,19 @@ public class SearchServiceImpl implements SearchService {
         Map<String, Object> propertyMap = new HashMap<>();
         propertyMap.put(Constants.USERID, userId);
 
-        List<Map<String, Object>> records = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+        List<Map<String, Object>> userRecentSearches = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 Constants.KEYSPACE_SUNBIRD_COURSES,
                 Constants.TABLE_USER_RECENT_SEARCH,
                 propertyMap,
                 null,
                 null);
 
-        for (Map<String, Object> record : records) {
-            Map<String, Object> updateMap = new HashMap<>(record);
+        for (Map<String, Object> userRecentSearch : userRecentSearches) {
+            Map<String, Object> updateMap = new HashMap<>(userRecentSearch);
             updateMap.put("is_active", false);
             Map<String, Object> primaryKey = new HashMap<>();
             primaryKey.put("user_id", userId);
-            primaryKey.put("timestamp", record.get(Constants.TIMESTAMP));
+            primaryKey.put("timestamp", userRecentSearch.get(Constants.TIMESTAMP));
             primaryKey.put(Constants.IS_ACTIVE, true);
             cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD_COURSES, Constants.TABLE_USER_RECENT_SEARCH, primaryKey);
             cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSES, Constants.TABLE_USER_RECENT_SEARCH, updateMap);
