@@ -4,11 +4,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.igot.cb.util.ApiResponse;
 import com.igot.cb.util.CbServerProperties;
 import com.igot.cb.util.Constants;
+import com.igot.cb.util.ProjectUtil;
 import com.igot.cb.util.redis.cache.CacheService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -111,12 +113,12 @@ class SearchServiceImplTest {
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
         // Sample active record
-        Map<String, Object> searchRecord = new HashMap<>();
-        searchRecord.put("user_id", userId);
-        searchRecord.put("timestamp", 123456789L);
-        searchRecord.put("search_query", "test");
-        searchRecord.put("is_active", true);
-        List<Map<String, Object>> records = List.of(searchRecord);
+        Map<String, Object> recordMap = new HashMap<>();
+        recordMap.put("user_id", userId);
+        recordMap.put("timestamp", 123456789L);
+        recordMap.put("search_query", "test");
+        recordMap.put("is_active", true);
+        List<Map<String, Object>> records = List.of(recordMap);
 
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 anyString(), anyString(), anyMap(), isNull(), isNull())).thenReturn(records);
@@ -146,17 +148,17 @@ class SearchServiceImplTest {
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
         // Prepare record
-        Map<String, Object> searchRecord = new HashMap<>();
-        searchRecord.put("user_id", userId);
-        searchRecord.put("timestamp", timestamp);
-        searchRecord.put("search_query", "AI");
-        searchRecord.put("nlp_search_query", "Artificial Intelligence");
-        searchRecord.put("search_category", Set.of("course"));
-        searchRecord.put("is_active", true);
+        Map<String, Object> recordMap = new HashMap<>();
+        recordMap.put("user_id", userId);
+        recordMap.put("timestamp", timestamp);
+        recordMap.put("search_query", "AI");
+        recordMap.put("nlp_search_query", "Artificial Intelligence");
+        recordMap.put("search_category", Set.of("course"));
+        recordMap.put("is_active", true);
 
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 anyString(), anyString(), anyMap(), isNull(), isNull())
-        ).thenReturn(List.of(searchRecord));
+        ).thenReturn(List.of(recordMap));
 
         when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
                 .thenReturn(Collections.singletonMap(Constants.RESPONSE, Constants.SUCCESS));
