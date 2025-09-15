@@ -296,4 +296,120 @@ class SearchServiceImplTest {
         assertEquals("Delete operation failed", response.getParams().getErrMsg());
     }
 
+    @Test
+    void testDuplicateRecordInactive() {
+        String userId = "user123";
+        String token = "validToken";
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.SEARCH_QUERY, "java");
+        record.put(Constants.IS_ACTIVE, false);
+        record.put(Constants.TIMESTAMP, 12345L);
+
+        when(cassandraOperation.getRecordsByOrder(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(record));
+
+        ApiResponse mockApiResponse = new ApiResponse();
+        mockApiResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
+                .thenReturn(mockApiResponse);
+
+        searchServiceImpl.createUserRecentSearches(buildSearchQueryJson(), token);
+
+        verify(cassandraOperation).deleteRecord(eq(Constants.KEYSPACE_SUNBIRD_COURSES),
+                eq(Constants.TABLE_USER_RECENT_SEARCH),
+                argThat(map -> map.get(Constants.IS_ACTIVE).equals(false)));
+    }
+
+    @Test
+    void testDuplicateRecordActiveWithNullCategory() {
+        String userId = "user123";
+        String token = "validToken";
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.SEARCH_QUERY, "java");
+        record.put(Constants.IS_ACTIVE, true);
+        record.put(Constants.TIMESTAMP, 12345L);
+        record.put(Constants.SEARCH_CATEGORY, null);
+
+        when(cassandraOperation.getRecordsByOrder(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(record));
+
+        ApiResponse mockApiResponse = new ApiResponse();
+        mockApiResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
+                .thenReturn(mockApiResponse);
+
+        searchServiceImpl.createUserRecentSearches(buildSearchQueryJson(), token);
+
+        verify(cassandraOperation).deleteRecord(any(), any(), any());
+    }
+
+    @Test
+    void testDuplicateRecordActiveWithCategories() {
+        String userId = "user123";
+        String token = "validToken";
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+
+        Set<String> categories = new HashSet<>(Arrays.asList("books", "java"));
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.SEARCH_QUERY, "java");
+        record.put(Constants.IS_ACTIVE, true);
+        record.put(Constants.TIMESTAMP, 12345L);
+        record.put(Constants.SEARCH_CATEGORY, categories);
+
+        when(cassandraOperation.getRecordsByOrder(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(record));
+
+        ApiResponse mockApiResponse = new ApiResponse();
+        mockApiResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
+                .thenReturn(mockApiResponse);
+
+        searchServiceImpl.createUserRecentSearches(buildSearchQueryJson(), token);
+
+        verify(cassandraOperation).deleteRecord(any(), any(), any());
+        // optional: verify merged categories
+        verify(cassandraOperation).insertRecord(
+                anyString(),
+                anyString(),
+                argThat(map -> ((Set<String>) map.get(Constants.SEARCH_CATEGORY)).containsAll(categories))
+        );
+    }
+
+    @Test
+    void deleteUserRecentSearchesByTimestamp_returnsNotFoundWhenNoRecords() {
+        String token = "validToken";
+        String userId = "user123";
+        Long timestamp = 987654321L;
+
+        when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+        when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                anyString(), anyString(), anyMap(), isNull(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = searchServiceImpl.deleteUserRecentSearchesByTimestamp(token, timestamp);
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("No recent search found for the given userid and timestamp", response.getParams().getErrMsg());
+    }
+
+
+    private JsonNode buildSearchQueryJson() {
+        try {
+            String json = "{"
+                    + "\"nlpSearchQuery\":\"java\","
+                    + "\"searchCategory\":\"category1\","
+                    + "\"searchQuery\":\"java\""
+                    + "}";
+            return new ObjectMapper().readTree(json);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
 }
