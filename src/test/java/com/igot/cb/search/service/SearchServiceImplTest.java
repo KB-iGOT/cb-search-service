@@ -1,33 +1,34 @@
 package com.igot.cb.search.service;
 
+import com.datastax.oss.driver.api.core.uuid.Uuids;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.igot.cb.util.ApiResponse;
-import com.igot.cb.util.CbServerProperties;
 import com.igot.cb.util.Constants;
+import com.igot.cb.util.CbServerProperties;
+
 import com.igot.cb.util.ProjectUtil;
 import com.igot.cb.util.redis.cache.CacheService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.*;
 import org.springframework.http.HttpStatus;
-
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.ArgumentMatchers.*;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.*;
 
 import java.util.*;
 
-@ExtendWith(MockitoExtension.class)
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(org.mockito.junit.jupiter.MockitoExtension.class)
 class SearchServiceImplTest {
+
+    @InjectMocks
+    private SearchServiceImpl searchServiceImpl;
+
     @Mock
     private AccessTokenValidator accessTokenValidator;
 
@@ -40,36 +41,60 @@ class SearchServiceImplTest {
     @Mock
     private ObjectMapper objectMapper;
 
-    @InjectMocks
-    private SearchServiceImpl searchServiceImpl;
-
     @Mock
     private CbServerProperties cbServerProperties;
 
-    @Test
-    void createUserRecentSearches_savesSearchSuccessfully() throws JsonProcessingException {
-        String token = "validToken";
-        String userId = "user123";
-        JsonNode searchQuery = new ObjectMapper().readTree("{\"nlpSearchQuery\":\"query1\",\"searchCategory\":\"category1\",\"searchQuery\":\"query1\"}");
+    private ObjectMapper realMapper = new ObjectMapper();
 
+    @BeforeEach
+    void setUp() {
+        if (objectMapper == null) {
+            objectMapper = realMapper;
+        }
+    }
+
+    @Test
+    void createUserRecentSearches_shouldSaveAndReturnSuccess() throws Exception {
+        String token = "validToken";
+        String userId = "user-123";
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
+
+        JsonNode searchQuery = realMapper.createObjectNode()
+                .put(Constants.NLP_SEARCH_QUERY_KEY, "nlp text")
+                .put(Constants.SEARCH_CATEGORY_KEY, "categoryA")
+                .put(Constants.SEARCH_QUERY_KEY, "My Query");
+
         when(cassandraOperation.getRecordsByOrder(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSES),
+                eq(Constants.TABLE_SEARCH_INDEX_BY_USER),
+                anyMap(), isNull(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse insertIndexResp = mock(ApiResponse.class);
+        when(cassandraOperation.insertRecord(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSES),
+                eq(Constants.TABLE_SEARCH_INDEX_BY_USER),
+                anyMap(),
+                any()))
+                .thenReturn(insertIndexResp);
+        when(insertIndexResp.get(Constants.RESPONSE)).thenReturn(Constants.SUCCESS);
+
+        when(cassandraOperation.insertRecord(
                 eq(Constants.KEYSPACE_SUNBIRD_COURSES),
                 eq(Constants.TABLE_USER_RECENT_SEARCH),
                 anyMap(),
-                isNull(),
-                isNull()
-        )).thenReturn(Collections.emptyList());
-        ApiResponse mockApiResponse = new ApiResponse();
-        mockApiResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+                isNull()))
+                .thenReturn(null);
 
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
-                .thenReturn(mockApiResponse);
+        when(cbServerProperties.getIsAuditTableEntryEnabled()).thenReturn(false);
 
         ApiResponse response = searchServiceImpl.createUserRecentSearches(searchQuery, token);
 
-        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertNotNull(response);
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals("search request saved successfully", response.getParams().getErrMsg());
+        verify(cacheService).deleteCache(userId);
     }
 
     @Test
@@ -87,91 +112,98 @@ class SearchServiceImplTest {
     }
 
     @Test
-    void readUserRecentSearches_returnsCachedSearches() throws JsonProcessingException {
-        String token = "validToken";
-        String userId = "user123";
-        String cachedJson = "[{\"searchQuery\":\"query1\"}]";
-
+    void readUserRecentSearches_returnsCachedResults_whenCachePresent() throws Exception {
+        String token = "t";
+        String userId = "user-1";
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
-        when(cacheService.getCache(userId)).thenReturn(cachedJson);
-        List<Map<String, Object>> expectedList = List.of(Map.of("searchQuery", "query1"));
 
+        List<Map<String, Object>> cachedList = new ArrayList<>();
+        Map<String, Object> item = new HashMap<>();
+        item.put(Constants.USERID, userId);
+        item.put(Constants.SEARCH_QUERY, "q");
+        cachedList.add(item);
+
+        String cachedJson = realMapper.writeValueAsString(cachedList);
         when(cacheService.getCache(userId)).thenReturn(cachedJson);
-        doReturn(expectedList).when(objectMapper).readValue(eq(cachedJson), any(TypeReference.class));
+
+        when(objectMapper.readValue(eq(cachedJson), ArgumentMatchers.<com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>>any()))
+                .thenReturn(cachedList);
 
         ApiResponse response = searchServiceImpl.readUserRecentSearches(token);
 
+        assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
-        assertNotNull(response.getResult().get("searchQueries"));
+        assertTrue(response.getResult().containsKey("searchQueries"));
+        List<?> resultList = (List<?>) response.getResult().get("searchQueries");
+        assertEquals(1, resultList.size());
     }
 
     @Test
-    void deleteUserAllRecentSearches_deletesSuccessfully() {
-        String token = "validToken";
-        String userId = "user123";
-
+    void deleteUserAllRecentSearches_shouldDeleteAllAndReturnOk() {
+        String token = "t2";
+        String userId = "user-2";
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
-        // Sample active record
-        Map<String, Object> recordMap = new HashMap<>();
-        recordMap.put("user_id", userId);
-        recordMap.put("timestamp", 123456789L);
-        recordMap.put("search_query", "test");
-        recordMap.put("is_active", true);
-        List<Map<String, Object>> records = List.of(recordMap);
+        Map<String, Object> rec1 = new HashMap<>();
+        rec1.put(Constants.USERID, userId);
+        rec1.put(Constants.TIMESTAMP, Uuids.timeBased());
+        List<Map<String, Object>> records = Collections.singletonList(rec1);
 
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                anyString(), anyString(), anyMap(), isNull(), isNull())).thenReturn(records);
+                eq(Constants.KEYSPACE_SUNBIRD_COURSES),
+                eq(Constants.TABLE_USER_RECENT_SEARCH),
+                anyMap(),
+                isNull(),
+                isNull()))
+                .thenReturn(records);
 
-        when(cassandraOperation.deleteRecord(anyString(), anyString(), anyMap()))
-                .thenReturn(Collections.singletonMap(Constants.RESPONSE, Constants.SUCCESS));
 
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
-                .thenReturn(Collections.singletonMap(Constants.RESPONSE, Constants.SUCCESS));
+        Map<String, Object> deleteResult = new HashMap<>();
+        deleteResult.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.deleteRecord(eq(Constants.KEYSPACE_SUNBIRD_COURSES), eq(Constants.TABLE_USER_RECENT_SEARCH), anyMap()))
+                .thenReturn(deleteResult);
+
+        when(cbServerProperties.getIsAuditTableEntryEnabled()).thenReturn(false);
 
         ApiResponse response = searchServiceImpl.deleteUserAllRecentSearches(token);
 
+        assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
-        assertEquals("All recent searches deleted successfully", response.getResult().get("result"));
-        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
-
+        assertTrue(((Map<?, ?>) response.getResult()).get("result").toString().contains("deleted successfully"));
         verify(cacheService).deleteCache(userId);
     }
 
-
     @Test
-    void deleteUserRecentSearchesByTimestamp_deletesSuccessfully() {
-        String token = "validToken";
-        String userId = "user123";
-        Long timestamp = 123456789L;
-
+    void deleteUserRecentSearchesByTimestamp_shouldRemoveSingleRecord() {
+        String token = "t3";
+        String userId = "user-3";
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
-        // Prepare record
-        Map<String, Object> recordMap = new HashMap<>();
-        recordMap.put("user_id", userId);
-        recordMap.put("timestamp", timestamp);
-        recordMap.put("search_query", "AI");
-        recordMap.put("nlp_search_query", "Artificial Intelligence");
-        recordMap.put("search_category", Set.of("course"));
-        recordMap.put("is_active", true);
+        UUID ts = Uuids.timeBased();
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.USERID, userId);
+        record.put(Constants.TIMESTAMP, ts);
 
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                anyString(), anyString(), anyMap(), isNull(), isNull())
-        ).thenReturn(List.of(recordMap));
+                eq(Constants.KEYSPACE_SUNBIRD_COURSES),
+                eq(Constants.TABLE_USER_RECENT_SEARCH),
+                anyMap(),
+                isNull(),
+                isNull()))
+                .thenReturn(Collections.singletonList(record));
 
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
-                .thenReturn(Collections.singletonMap(Constants.RESPONSE, Constants.SUCCESS));
+        Map<String, Object> deleteResp = new HashMap<>();
+        deleteResp.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.deleteRecord(eq(Constants.KEYSPACE_SUNBIRD_COURSES), eq(Constants.TABLE_USER_RECENT_SEARCH), anyMap()))
+                .thenReturn(deleteResp);
 
-        when(cassandraOperation.deleteRecord(anyString(), anyString(), anyMap()))
-                .thenReturn(Collections.singletonMap(Constants.RESPONSE, Constants.SUCCESS));
+        when(cbServerProperties.getIsAuditTableEntryEnabled()).thenReturn(false);
 
-        ApiResponse response = searchServiceImpl.deleteUserRecentSearchesByTimestamp(token, timestamp);
+        ApiResponse response = searchServiceImpl.deleteUserRecentSearchesByTimestamp(token, ts);
 
+        assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
-        assertEquals("Recent search deleted successfully", response.getResult().get("result"));
-        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
-
+        assertTrue(((Map<?, ?>) response.getResult()).get("result").toString().contains("deleted successfully"));
         verify(cacheService).deleteCache(userId);
     }
 
@@ -250,7 +282,7 @@ class SearchServiceImplTest {
     @Test
     void deleteUserRecentSearchesByTimestamp_returnsErrorWhenTokenIsInvalid() {
         String token = "invalidToken";
-        Long timestamp = 123456789L;
+        UUID timestamp = Uuids.timeBased();
 
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(Constants.UNAUTHORIZED);
 
@@ -265,29 +297,22 @@ class SearchServiceImplTest {
     void deleteUserRecentSearchesByTimestamp_returnsErrorWhenDeleteFails() {
         String token = "validToken";
         String userId = "user123";
-        Long timestamp = 123456789L;
-
-        // Mock verified user
+        UUID timestamp = Uuids.timeBased();
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
-
-        // Mock that a record exists
         Map<String, Object> existingRecord = new HashMap<>();
         existingRecord.put(Constants.USERID, userId);
         existingRecord.put(Constants.TIMESTAMP, timestamp);
         existingRecord.put(Constants.SEARCH_QUERY, "AI course");
         existingRecord.put(Constants.NLP_SEARCH_QUERY, "artificial intelligence");
-        existingRecord.put(Constants.IS_ACTIVE, true);
         existingRecord.put(Constants.SEARCH_CATEGORY, Set.of("course"));
 
         when(cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                 anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(List.of(existingRecord));
 
-        // Mock insert succeeds
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
+        lenient().when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(), any()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
 
-        // Mock delete fails
         when(cassandraOperation.deleteRecord(anyString(), anyString(), anyMap()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED, "errmsg", "Delete operation failed"));
 
@@ -298,38 +323,32 @@ class SearchServiceImplTest {
         assertEquals("Delete operation failed", response.getParams().getErrMsg());
     }
 
+
     @Test
     void testCreateUserRecentSearches_CoversForLoop() {
-        // Arrange
         String token = "valid-token";
         String userId = "user123";
         String actualQuery = "java course";
 
-        // Mock token validation
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
-        // Existing record that matches the incoming search query
         Map<String, Object> existingRecord = new HashMap<>();
-        existingRecord.put(Constants.SEARCH_QUERY, actualQuery); // matches
-        existingRecord.put(Constants.IS_ACTIVE, true);
+        existingRecord.put(Constants.SEARCH_QUERY, actualQuery);
         existingRecord.put(Constants.TIMESTAMP, 123456789L);
         existingRecord.put(Constants.SEARCH_CATEGORY, new HashSet<>(Arrays.asList("oldCategory")));
 
         List<Map<String, Object>> existingSearches = Collections.singletonList(existingRecord);
 
-        // Mock Cassandra getRecordsByOrder to return a record
         when(cassandraOperation.getRecordsByOrder(
                 anyString(), anyString(), anyMap(), isNull(), isNull()
         )).thenReturn(existingSearches);
 
-        // Mock Cassandra insertRecord to return success
         ApiResponse insertResponse = ProjectUtil.createDefaultResponse(Constants.API_RECENT_SEARCH_CREATE);
         insertResponse.put(Constants.RESPONSE, Constants.SUCCESS);
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap()))
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(), any()))
                 .thenReturn(insertResponse);
 
-        // Prepare JSON input with matching actualQuery
-        ObjectNode searchQueryJson = new ObjectMapper().createObjectNode();
+        com.fasterxml.jackson.databind.node.ObjectNode searchQueryJson = new ObjectMapper().createObjectNode();
         searchQueryJson.put(Constants.NLP_SEARCH_QUERY_KEY, "nlp text");
         searchQueryJson.put(Constants.SEARCH_CATEGORY_KEY, "newCategory");
         searchQueryJson.put(Constants.SEARCH_QUERY_KEY, actualQuery);
@@ -347,7 +366,7 @@ class SearchServiceImplTest {
     void deleteUserRecentSearchesByTimestamp_deletesFailed() {
         String token = "validToken";
         String userId = "user123";
-        Long timestamp = 123456789L;
+        UUID timestamp = Uuids.timeBased();
 
         when(accessTokenValidator.verifyUserToken(token)).thenReturn(userId);
 
@@ -359,5 +378,5 @@ class SearchServiceImplTest {
 
         assertEquals(HttpStatus.NOT_FOUND, response.getResponseCode());
         assertEquals("No recent search found for the given userid and timestamp", response.getParams().getErrMsg());
-        }
+    }
 }
