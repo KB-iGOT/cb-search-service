@@ -15,7 +15,7 @@ RUN apt-get update \
         xz-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-    
+
 COPY cb-search-service-0.0.1-SNAPSHOT.jar /opt/
 
 RUN chown -R appuser:appuser /opt
