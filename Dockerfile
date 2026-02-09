@@ -1,4 +1,4 @@
-FROM openjdk:17-slim
+FROM openjdk:17.0.1-jdk-slim
 
 RUN useradd -ms /bin/bash appuser
 
