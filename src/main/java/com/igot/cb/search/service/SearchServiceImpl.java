@@ -50,17 +50,29 @@ public class SearchServiceImpl implements SearchService {
         }
 
         String nlpSearchQuery = searchQuery.path(Constants.NLP_SEARCH_QUERY_KEY).asText(null);
-        String categoryNode = searchQuery.path(Constants.SEARCH_CATEGORY_KEY).asText(null);
+        JsonNode categoryNode = searchQuery.path(Constants.SEARCH_CATEGORY_KEY);
+        Set<String> categorySet = new HashSet<>();
+
+        if (categoryNode.isTextual()) {
+            String category = categoryNode.asText(null);
+            if (StringUtils.isNotBlank(category)) {
+                categorySet.add(category.trim());
+            }
+        } else if (categoryNode.isArray()) {
+            categoryNode.forEach(node -> {
+                if (node.isTextual() && StringUtils.isNotBlank(node.asText())) {
+                    categorySet.add(node.asText().trim());
+                }
+            });
+        }
+
         String actualQuery = searchQuery.hasNonNull(Constants.SEARCH_QUERY_KEY)
                 ? searchQuery.get(Constants.SEARCH_QUERY_KEY).asText().toLowerCase().trim().replaceAll("\\s+", " ")
                 : null;
 
-
-        if (StringUtils.isBlank(nlpSearchQuery) || StringUtils.isBlank(actualQuery) || StringUtils.isBlank(categoryNode)) {
+        if (StringUtils.isBlank(nlpSearchQuery) || StringUtils.isBlank(actualQuery) || categorySet.isEmpty()) {
             return errorResponse(response, HttpStatus.BAD_REQUEST, "One or more required fields (nlpSearchQuery, searchCategory, searchQuery) are missing or empty");
         }
-
-        Set<String> categorySet = new HashSet<>(Collections.singleton(categoryNode));
 
         Map<String, Object> queryMap = new HashMap<>();
         queryMap.put(Constants.USERID, userId);
