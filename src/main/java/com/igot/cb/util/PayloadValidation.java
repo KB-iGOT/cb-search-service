@@ -1,11 +1,11 @@
 package com.igot.cb.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.igot.cb.exceptions.CustomException;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
 import lombok.extern.slf4j.Slf4j;
+import org.igot.common.CustomException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
